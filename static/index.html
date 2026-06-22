@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ALPR Production Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #f0883e; --red: #f85149;
+    --yellow: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+
+  header {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 0.85rem; }
+  .badge { padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
+  .badge-green  { background:#1a3a2a; color:var(--green); }
+  .badge-orange { background:#3a2a10; color:var(--orange); }
+  .badge-gray   { background:#21262d; color:var(--muted); }
+  .badge-blue   { background:#112040; color:var(--accent); }
+
+  main { padding: 20px 24px; }
+
+  /* Add camera form */
+  .add-cam-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 20px; margin-bottom: 24px;
+  }
+  .add-cam-panel h2 { font-size: 0.9rem; color: var(--muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+  .form-row label { font-size: 0.78rem; color: var(--muted); display: block; margin-bottom: 4px; }
+  .form-row input, .form-row select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 0.85rem; min-width: 160px;
+  }
+  .form-row input:focus, .form-row select:focus { outline: none; border-color: var(--accent); }
+  .btn {
+    background: var(--accent); color: #0d1117; border: none;
+    padding: 7px 18px; border-radius: 6px; font-weight: 600;
+    font-size: 0.85rem; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn-sm { padding: 3px 10px; font-size: 0.75rem; }
+
+  /* Stats bar */
+  .stats-bar {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 20px; margin-bottom: 24px;
+    display: flex; gap: 32px; flex-wrap: wrap;
+  }
+  .stat-item .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .stat-item .lbl { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+
+  /* Main content area: cameras left, DB feed right */
+  .content-layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* Camera grid */
+  .cameras-grid {
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  .camera-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .cam-header {
+    padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cam-header h3 { font-size: 0.95rem; flex: 1; }
+  .cam-feed {
+    background: #000; position: relative; overflow: hidden;
+  }
+  .cam-feed.primary-feed   { aspect-ratio: 16/9; }
+  .cam-feed.secondary-feed { aspect-ratio: 16/9; }
+  .cam-feed img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .cam-feed .no-feed {
+    position: absolute; inset: 0; display: flex; align-items: center;
+    justify-content: center; color: var(--muted); font-size: 0.85rem;
+  }
+  .cam-progress { height: 3px; background: var(--border); }
+  .cam-progress-fg { height: 100%; background: var(--accent); transition: width 0.3s; width: 0%; }
+
+  /* Detection table (live) */
+  .cam-table-wrap { overflow-x: auto; max-height: 200px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th { background: var(--bg); color: var(--muted); padding: 7px 10px; text-align: left;
+       font-weight: 500; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em;
+       position: sticky; top: 0; z-index: 1; }
+  td { padding: 6px 10px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tr:hover td { background: #1c2128; }
+  .plate-badge { background: #3a2a10; color: var(--orange); padding: 2px 7px; border-radius: 4px; font-weight: 700; font-family: monospace; font-size: 0.85rem; }
+  .conf-pill { font-size: 0.67rem; padding: 1px 5px; border-radius: 8px; background: #21262d; color: var(--muted); margin-left: 4px; }
+  .finalized-icon { color: var(--green); font-size: 0.7rem; margin-left: 4px; }
+
+  .empty-msg { color: var(--muted); font-size: 0.8rem; padding: 16px; text-align: center; }
+
+  /* ── DB Live Feed panel ── */
+  .db-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden; position: sticky; top: 16px;
+  }
+  .db-panel-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .db-panel-header h3 { font-size: 0.9rem; flex: 1; font-weight: 600; }
+  .db-pulse {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .db-table-wrap { overflow-y: auto; max-height: calc(100vh - 220px); }
+  .db-table-wrap table { font-size: 0.75rem; }
+  .db-table-wrap th { font-size: 0.68rem; padding: 6px 8px; }
+  .db-table-wrap td { padding: 5px 8px; }
+  .db-new-row { animation: flashRow 1.2s ease-out; }
+  @keyframes flashRow {
+    0%   { background: #1a3a2a; }
+    100% { background: transparent; }
+  }
+  .cam-tag { font-size: 0.65rem; padding: 1px 5px; border-radius: 4px;
+             background: #112040; color: var(--accent); font-weight: 600; }
+  .ts-cell { color: var(--muted); font-size: 0.68rem; white-space: nowrap; }
+
+  @media (max-width: 1100px) {
+    .content-layout { grid-template-columns: 1fr; }
+    .db-panel { position: static; }
+    .db-table-wrap { max-height: 320px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.6rem">📷</span>
+  <div>
+    <h1>ALPR Production Dashboard</h1>
+    <div class="sub">Multi-camera licence plate · colour · brand detection</div>
+  </div>
+  <div id="health-badge" class="badge badge-gray" style="margin-left:auto">Connecting…</div>
+</header>
+
+<main>
+
+  <!-- Stats bar -->
+  <div class="stats-bar" id="stats-bar">
+    <div class="stat-item">
+      <div class="val" id="stat-cameras">0</div>
+      <div class="lbl">Active Cameras</div>
+    </div>
+    <div class="stat-item">
+      <div class="val" id="stat-total">0</div>
+      <div class="lbl">Total Detections (DB)</div>
+    </div>
+    <div class="stat-item">
+      <div class="val" id="stat-plates">0</div>
+      <div class="lbl">Unique Plates (DB)</div>
+    </div>
+  </div>
+
+  <!-- Add camera form -->
+  <div class="add-cam-panel">
+    <h2>Add Camera</h2>
+    <div class="form-row">
+      <div>
+        <label>Camera Name</label>
+        <input id="f-name" placeholder="Gate-A-Primary" />
+      </div>
+      <div>
+        <label>Type</label>
+        <select id="f-type">
+          <option value="primary">Primary (plate + colour + brand)</option>
+          <option value="secondary">Secondary (plate only)</option>
+        </select>
+      </div>
+      <div>
+        <label>Source (RTSP URL or file path)</label>
+        <input id="f-source" placeholder="rtsp://192.168.1.10/stream" style="min-width:260px" />
+      </div>
+      <div>
+        <label>Upper Line (0–1)</label>
+        <input id="f-upper" placeholder="0.20" style="min-width:80px;max-width:100px" />
+      </div>
+      <div>
+        <label>Entry Line (0–1)</label>
+        <input id="f-entry" placeholder="0.70" style="min-width:80px;max-width:100px" />
+      </div>
+      <div>
+        <label>&nbsp;</label>
+        <button class="btn" onclick="addCamera()">＋ Add Camera</button>
+      </div>
+    </div>
+    <div id="add-error" style="color:var(--red);font-size:0.8rem;margin-top:8px"></div>
+  </div>
+
+  <!-- Main layout: cameras + DB panel -->
+  <div class="content-layout">
+
+    <!-- Left: camera cards -->
+    <div class="cameras-grid" id="cameras-grid">
+      <div class="empty-msg" id="no-cameras-msg">No cameras registered. Add one above.</div>
+    </div>
+
+    <!-- Right: live DB feed -->
+    <div class="db-panel">
+      <div class="db-panel-header">
+        <div class="db-pulse"></div>
+        <h3>Database — Live Entries</h3>
+        <span class="badge badge-blue" id="db-count">0 rows</span>
+      </div>
+      <div class="db-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Plate</th>
+              <th>Camera</th>
+              <th>Colour</th>
+              <th>Brand</th>
+              <th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="db-tbody">
+            <tr><td colspan="5" class="empty-msg">Waiting for DB entries…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+</main>
+
+<script>
+const BASE = window.location.origin;
+let pollTimer = null;
+let dbSeenIds = new Set();
+
+// ── Add camera ──────────────────────────────────────────────────────────────────
+async function addCamera() {
+  const name   = document.getElementById('f-name').value.trim();
+  const type   = document.getElementById('f-type').value;
+  const source = document.getElementById('f-source').value.trim();
+  const upper  = parseFloat(document.getElementById('f-upper').value) || undefined;
+  const entry  = parseFloat(document.getElementById('f-entry').value) || undefined;
+  const errEl  = document.getElementById('add-error');
+  errEl.textContent = '';
+
+  if (!name || !source) { errEl.textContent = 'Name and Source are required.'; return; }
+
+  const body = { name, type, source };
+  if (upper !== undefined) body.upper_line = upper;
+  if (entry !== undefined) body.entry_line = entry;
+
+  const res = await fetch(BASE + '/cameras', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (data.error) { errEl.textContent = data.error; return; }
+
+  document.getElementById('f-name').value   = '';
+  document.getElementById('f-source').value = '';
+  document.getElementById('f-upper').value  = '';
+  document.getElementById('f-entry').value  = '';
+  refreshCameras();
+}
+
+// ── Remove camera ───────────────────────────────────────────────────────────────
+async function removeCamera(name) {
+  if (!confirm(`Stop camera "${name}"?`)) return;
+  await fetch(BASE + '/cameras/' + encodeURIComponent(name), { method: 'DELETE' });
+  document.getElementById('cam-card-' + cssId(name))?.remove();
+  refreshCameras();
+}
+
+// ── Refresh cameras ─────────────────────────────────────────────────────────────
+async function refreshCameras() {
+  const [cams, status, stats] = await Promise.all([
+    fetch(BASE + '/cameras').then(r => r.json()),
+    fetch(BASE + '/status').then(r => r.json()),
+    fetch(BASE + '/stats').then(r => r.json()).catch(() => []),
+  ]);
+
+  document.getElementById('stat-cameras').textContent = cams.length;
+  const totalDet    = stats.reduce((s, r) => s + (r.total || 0), 0);
+  const totalPlates = stats.reduce((s, r) => s + (r.unique_plates || 0), 0);
+  document.getElementById('stat-total').textContent  = totalDet;
+  document.getElementById('stat-plates').textContent = totalPlates;
+
+  const grid  = document.getElementById('cameras-grid');
+  const noMsg = document.getElementById('no-cameras-msg');
+
+  if (cams.length === 0) {
+    grid.innerHTML = '';
+    const m = document.createElement('div');
+    m.className = 'empty-msg'; m.id = 'no-cameras-msg';
+    m.textContent = 'No cameras registered. Add one above.';
+    grid.appendChild(m);
+    return;
+  }
+  if (noMsg) noMsg.remove();
+
+  cams.forEach(cam => {
+    let card = document.getElementById('cam-card-' + cssId(cam.name));
+    if (!card) {
+      card = buildCameraCard(cam);
+      grid.appendChild(card);
+      const img = card.querySelector('.cam-img');
+      img.src = BASE + '/stream/' + encodeURIComponent(cam.name) + '?t=' + Date.now();
+    }
+
+    const prog = card.querySelector('.cam-progress-fg');
+    if (prog) prog.style.width = (cam.progress || 0) + '%';
+
+    const camStatus = status[cam.name];
+    if (camStatus) updateTable(card, camStatus.rows || [], cam.type);
+  });
+}
+
+function buildCameraCard(cam) {
+  const card = document.createElement('div');
+  card.className = 'camera-card';
+  card.id = 'cam-card-' + cssId(cam.name);
+
+  const isPrimary = cam.type === 'primary';
+  const typeBadge = isPrimary
+    ? '<span class="badge badge-green">PRIMARY</span>'
+    : '<span class="badge badge-orange">SECONDARY</span>';
+
+  const feedClass = isPrimary ? 'primary-feed' : 'secondary-feed';
+
+  const cols = isPrimary
+    ? '<th>Plate</th><th>Colour</th><th>Brand</th><th>Time</th><th></th>'
+    : '<th>Plate</th><th>Time</th><th></th>';
+
+  card.innerHTML = `
+    <div class="cam-header">
+      <h3>${cam.name}</h3>
+      ${typeBadge}
+      <button class="btn btn-danger btn-sm" onclick="removeCamera('${cam.name}')">✕ Stop</button>
+    </div>
+    <div class="cam-feed ${feedClass}">
+      <div class="no-feed">Waiting for stream…</div>
+      <img class="cam-img"
+           onload="this.previousElementSibling.style.display='none'"
+           onerror="this.previousElementSibling.style.display='flex'" />
+    </div>
+    <div class="cam-progress"><div class="cam-progress-fg"></div></div>
+    <div class="cam-table-wrap">
+      <table>
+        <thead><tr>${cols}</tr></thead>
+        <tbody class="cam-tbody"><tr><td colspan="5" class="empty-msg">No detections yet</td></tr></tbody>
+      </table>
+    </div>
+  `;
+  return card;
+}
+
+function updateTable(card, rows, camType) {
+  const tbody     = card.querySelector('.cam-tbody');
+  const isPrimary = camType === 'primary';
+
+  if (!rows.length) return;
+
+  const emptyRow = tbody.querySelector('td[colspan]');
+  if (emptyRow) emptyRow.parentElement.remove();
+
+  rows.forEach(r => {
+    let tr = tbody.querySelector(`tr[data-id="${r.id}"]`);
+    if (!tr) {
+      tr = document.createElement('tr');
+      tr.setAttribute('data-id', r.id);
+      tbody.prepend(tr);
+    }
+    const fin = r.finalized ? '<span class="finalized-icon">✓</span>' : '';
+    const plateTd = r.plate && r.plate !== '—'
+      ? `<span class="plate-badge">${r.plate}</span>${fin}`
+      : `<span style="color:var(--muted)">—</span>${fin}`;
+
+    if (isPrimary) {
+      tr.innerHTML = `
+        <td>${plateTd}</td>
+        <td>${r.colour||'?'} ${r.colour_conf && r.colour_conf!=='—' ? `<span class="conf-pill">${r.colour_conf}</span>` : ''}</td>
+        <td>${r.brand||'—'} ${r.brand_conf && r.brand_conf!=='—' ? `<span class="conf-pill">${r.brand_conf}</span>` : ''}</td>
+        <td style="color:var(--muted);font-size:0.75rem">${r.time||''}</td>
+        <td><span class="badge badge-gray">#${r.id}</span></td>
+      `;
+    } else {
+      tr.innerHTML = `
+        <td>${plateTd}</td>
+        <td style="color:var(--muted);font-size:0.75rem">${r.time||''}</td>
+        <td><span class="badge badge-gray">#${r.id}</span></td>
+      `;
+    }
+  });
+}
+
+// ── DB live feed ────────────────────────────────────────────────────────────────
+async function refreshDB() {
+  let rows;
+  try {
+    rows = await fetch(BASE + '/detections?limit=80').then(r => r.json());
+  } catch { return; }
+
+  if (!Array.isArray(rows) || rows.length === 0) return;
+
+  const tbody = document.getElementById('db-tbody');
+  const emptyRow = tbody.querySelector('td[colspan]');
+  if (emptyRow) emptyRow.parentElement.remove();
+
+  document.getElementById('db-count').textContent = rows.length + ' rows';
+
+  rows.forEach(r => {
+    const rowId = 'db-row-' + r.id;
+    if (dbSeenIds.has(r.id)) return;
+    dbSeenIds.add(r.id);
+
+    const tr = document.createElement('tr');
+    tr.id = rowId;
+    tr.className = 'db-new-row';
+
+    const plate = r.plate
+      ? `<span class="plate-badge">${r.plate}</span>`
+      : `<span style="color:var(--muted)">—</span>`;
+
+    const camTag = `<span class="cam-tag">${r.camera_name || ''}</span>`;
+
+    const colourTd = r.colour
+      ? `${r.colour}${r.colour_conf ? ` <span class="conf-pill">${(r.colour_conf*100).toFixed(0)}%</span>` : ''}`
+      : '<span style="color:var(--muted)">—</span>';
+
+    const ts = r.detected_at
+      ? new Date(r.detected_at).toLocaleTimeString()
+      : (r.video_time || '—');
+
+    const brandTd = r.brand
+      ? `${r.brand}${r.brand_conf ? ` <span class="conf-pill">${(r.brand_conf*100).toFixed(0)}%</span>` : ''}`
+      : '<span style="color:var(--muted)">—</span>';
+
+    tr.innerHTML = `
+      <td>${plate}</td>
+      <td>${camTag}</td>
+      <td>${colourTd}</td>
+      <td>${brandTd}</td>
+      <td class="ts-cell">${ts}</td>
+    `;
+
+    tbody.prepend(tr);
+  });
+}
+
+// ── Health check ────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r    = await fetch(BASE + '/health');
+    const data = await r.json();
+    const el   = document.getElementById('health-badge');
+    el.textContent = `● Online · ${data.cameras} camera(s)`;
+    el.className   = 'badge badge-green';
+  } catch {
+    const el = document.getElementById('health-badge');
+    el.textContent = '● Offline';
+    el.className   = 'badge';
+    el.style.color = 'var(--red)';
+  }
+}
+
+function cssId(name) { return name.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+// ── Poll loop ───────────────────────────────────────────────────────────────────
+function startPolling() {
+  refreshCameras();
+  refreshDB();
+  checkHealth();
+  setInterval(refreshCameras, 1500);
+  setInterval(refreshDB, 3000);
+  setInterval(checkHealth, 5000);
+}
+
+startPolling();
+</script>
+</body>
+</html>

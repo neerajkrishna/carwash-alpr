@@ -1,0 +1,12 @@
+# Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
+
+# ByteTrack tracker defaults for mode="track"
+# Docs: https://docs.ultralytics.com/modes/track/
+
+tracker_type: bytetrack  # (str) Tracker backend: bytetrack
+track_high_thresh: 0.25  # (float) First-stage match threshold
+track_low_thresh: 0.1    # (float) Second-stage threshold for low-score matches
+new_track_thresh: 0.25   # (float) Start a new track if no match >= this
+track_buffer: 90         # (int) Increased from 30 → 90: keeps lost tracks alive for 3x longer before killing the ID
+match_thresh: 0.8        # (float) Association similarity threshold (IoU/cost)
+fuse_score: True         # (bool) Fuse detection score with motion/IoU for matching
