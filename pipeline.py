@@ -175,7 +175,7 @@ class CameraPipeline:
                             track_store.finalize(gone_tid)
                             gone_snap = track_store.snapshot(gone_tid)
                             self._finalize_log_row(gone_tid, gone_snap)
-                            self._write_to_db(gone_tid, gone_snap, time_str)
+                            # No DB write — vehicle left without crossing entry line
                     active_tids = current_tids
 
                     # ── Process each track ──────────────────────────────────────
@@ -238,14 +238,7 @@ class CameraPipeline:
             finally:
                 cap.release()
 
-            # Flush any tracks still active when video ends
             if is_file:
-                for rem_tid in active_tids:
-                    if not track_store.is_finalized(rem_tid):
-                        track_store.finalize(rem_tid)
-                        rem_snap = track_store.snapshot(rem_tid)
-                        self._finalize_log_row(rem_tid, rem_snap)
-                        self._write_to_db(rem_tid, rem_snap, time_str)
                 self.progress = 100
                 self.done = True
                 break
