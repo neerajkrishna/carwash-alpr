@@ -11,11 +11,6 @@ env/
 dist/
 build/
 
-# Model weights (large binary files — store separately)
-models/*.pt
-models/*.pth
-models/*.onnx
-
 # Video test files
 cam1/
 cam2/
