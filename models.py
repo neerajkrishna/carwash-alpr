@@ -184,7 +184,8 @@ def detect_brand(crop_bgr: "np.ndarray") -> tuple[str, float]:
         pil = Image.fromarray(cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB))
         inp = _clip_processor(images=pil, return_tensors="pt").to(DEVICE)
         with torch.no_grad():
-            img_feats = _clip_model.get_image_features(**inp)
+            img_out   = _clip_model.vision_model(**inp)
+            img_feats = img_out.pooler_output @ _clip_model.visual_projection.weight.T
             img_feats = torch.nn.functional.normalize(img_feats, p=2, dim=-1)
             sims      = (img_feats @ _text_feats.T).squeeze(0)
         idx        = int(sims.argmax())

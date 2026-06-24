@@ -161,9 +161,7 @@ class CameraPipeline:
 
                     # ── Plate detection (every PLATE_EVERY_N frames) ────────────
                     if frame_idx % PLATE_EVERY_N == 0:
-                        plates = read_plates(frame_rgb)
-                        if plates:
-                            last_plates = plates
+                        last_plates = read_plates(frame_rgb)
 
                     # ── Vehicle tracking ────────────────────────────────────────
                     tracks = get_tracks(frame, self.upper_line, self.entry_line, self._detector)
@@ -175,7 +173,7 @@ class CameraPipeline:
                             track_store.finalize(gone_tid)
                             gone_snap = track_store.snapshot(gone_tid)
                             self._finalize_log_row(gone_tid, gone_snap)
-                            # No DB write — vehicle left without crossing entry line
+                            self._write_to_db(gone_tid, gone_snap, time_str, require_plate=False)
                     active_tids = current_tids
 
                     # ── Process each track ──────────────────────────────────────
@@ -298,14 +296,18 @@ class CameraPipeline:
 
     # ── Database write ─────────────────────────────────────────────────────────
 
-    def _write_to_db(self, tid: int, snap: dict, time_str: str):
+    def _write_to_db(self, tid: int, snap: dict, time_str: str, require_plate: bool = True):
         """
         Write a finalized detection to PostgreSQL.
         Secondary cameras only write plate — colour/brand are stored as NULL.
-        Skips insert if no valid plate was detected.
+        require_plate=False allows saving vehicles that left frame without a plate read,
+        but still requires at least a plate or brand to avoid all-empty rows.
         """
         plate = snap.get("plate", "—")
-        if (not plate or plate == "—") and self.cam_type == "primary":
+        brand = snap.get("brand", "—")
+        if require_plate and (not plate or plate == "—"):
+            return
+        if not require_plate and (not plate or plate == "—") and (not brand or brand == "—"):
             return
         try:
             insert_detection(

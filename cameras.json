@@ -5,12 +5,5 @@
     "source":     "cam2/XNO-6080R_2026_06_13_16_00_00.mkv",
     "upper_line": 0.20,
     "entry_line": 0.70
-  },
-  {
-    "name":       "Gate-B-Secondary",
-    "type":       "secondary",
-    "source":     "cam1/XNO-6080R_2026_06_13_16_00_13.mkv",
-    "upper_line": 0.20,
-    "entry_line": 0.70
   }
 ]
