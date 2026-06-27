@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ALPR — Data View</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #f0883e; --red: #f85149;
+    --yellow: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+
+  header {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 0.85rem; }
+  .nav-link {
+    color: var(--accent); text-decoration: none;
+    font-size: 0.85rem; font-weight: 600; padding: 5px 14px;
+    border: 1px solid var(--accent); border-radius: 6px; white-space: nowrap;
+  }
+  .nav-link:hover { background: #112040; }
+  .badge { padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
+  .badge-green  { background:#1a3a2a; color:var(--green); }
+  .badge-orange { background:#3a2a10; color:var(--orange); }
+  .badge-gray   { background:#21262d; color:var(--muted); }
+  .badge-blue   { background:#112040; color:var(--accent); }
+
+  main { padding: 20px 24px; }
+
+  /* Stats bar */
+  .stats-bar {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 20px; margin-bottom: 20px;
+    display: flex; gap: 32px; flex-wrap: wrap; align-items: center;
+  }
+  .stat-item .val { font-size: 1.4rem; font-weight: 700; color: var(--accent); }
+  .stat-item .lbl { font-size: 0.72rem; color: var(--muted); margin-top: 2px; }
+  .stat-divider { width: 1px; height: 36px; background: var(--border); }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 20px; flex-wrap: wrap;
+  }
+  .toolbar input {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 12px; border-radius: 6px; font-size: 0.85rem; min-width: 200px;
+  }
+  .toolbar input:focus { outline: none; border-color: var(--accent); }
+  .toolbar select {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 0.85rem;
+  }
+  .toolbar label { font-size: 0.78rem; color: var(--muted); }
+  .ar-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.78rem; color: var(--muted); margin-left: auto; }
+  .ar-toggle input { width: 15px; height: 15px; cursor: pointer; }
+  .refresh-ts { font-size: 0.75rem; color: var(--muted); }
+
+  /* Camera grid */
+  .cam-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* Per-camera panel */
+  .cam-panel {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  .cam-panel-header {
+    padding: 11px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .cam-panel-header h2 { font-size: 0.92rem; font-weight: 600; flex: 1; }
+  .db-pulse {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.5s infinite; flex-shrink: 0;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .cam-search {
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .cam-search input {
+    background: var(--card); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 10px; border-radius: 5px; font-size: 0.8rem; width: 100%;
+  }
+  .cam-search input:focus { outline: none; border-color: var(--accent); }
+
+  .table-wrap { overflow-x: auto; overflow-y: auto; max-height: 340px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th {
+    background: var(--bg); color: var(--muted); padding: 7px 10px;
+    text-align: left; font-weight: 500; font-size: 0.7rem;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    position: sticky; top: 0; z-index: 1;
+    border-bottom: 1px solid var(--border);
+  }
+  td { padding: 6px 10px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tr:hover td { background: #1c2128; }
+
+  .plate-badge {
+    background: #3a2a10; color: var(--orange); padding: 2px 7px;
+    border-radius: 4px; font-weight: 700; font-family: monospace; font-size: 0.85rem;
+  }
+  .conf-pill {
+    font-size: 0.65rem; padding: 1px 5px; border-radius: 8px;
+    background: #21262d; color: var(--muted); margin-left: 3px;
+  }
+  .ts-cell { color: var(--muted); font-size: 0.7rem; white-space: nowrap; }
+  .empty-msg { color: var(--muted); font-size: 0.8rem; padding: 20px; text-align: center; }
+  .row-new { animation: flashRow 1.4s ease-out; }
+  @keyframes flashRow { 0%{background:#1a3a2a} 100%{background:transparent} }
+
+  .cam-footer {
+    padding: 7px 12px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    color: var(--muted); font-size: 0.72rem;
+  }
+
+  #no-cameras { color: var(--muted); text-align: center; padding: 60px 20px; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.5rem">📋</span>
+  <div>
+    <h1>ALPR — Data View</h1>
+    <div class="sub">Per-camera detections · no live streams</div>
+  </div>
+  <span id="health-badge" class="badge badge-gray" style="margin-left:auto;margin-right:12px">Connecting…</span>
+  <a href="/" class="nav-link">← Live Dashboard</a>
+</header>
+
+<main>
+
+  <!-- Global stats -->
+  <div class="stats-bar">
+    <div class="stat-item">
+      <div class="val" id="stat-total">—</div>
+      <div class="lbl">Total Detections</div>
+    </div>
+    <div class="stat-item">
+      <div class="val" id="stat-plates">—</div>
+      <div class="lbl">Unique Plates</div>
+    </div>
+    <div class="stat-divider"></div>
+    <div id="per-cam-stats" style="display:flex;gap:24px;flex-wrap:wrap"></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <label>Rows per camera</label>
+    <select id="g-limit">
+      <option value="50">50</option>
+      <option value="100" selected>100</option>
+      <option value="250">250</option>
+      <option value="500">500</option>
+    </select>
+    <span class="refresh-ts" id="last-refresh"></span>
+    <label class="ar-toggle">
+      <input type="checkbox" id="auto-refresh" checked> Auto-refresh (3 s)
+    </label>
+  </div>
+
+  <!-- Per-camera panels -->
+  <div class="cam-grid" id="cam-grid">
+    <div id="no-cameras">Loading cameras…</div>
+  </div>
+
+</main>
+
+<script>
+const BASE = window.location.origin;
+
+// per-camera state: name → { rows: [], seenIds: Set, searchFilter: '' }
+const camState = {};
+let knownCams  = [];   // [{name, type}]
+let refreshTimer = null;
+
+// ── Build a camera panel ─────────────────────────────────────────────────────────
+function buildPanel(cam) {
+  const isPrimary  = cam.type === 'primary';
+  const typeBadge  = isPrimary
+    ? '<span class="badge badge-green">PRIMARY</span>'
+    : '<span class="badge badge-orange">SECONDARY</span>';
+
+  const colHeaders = isPrimary
+    ? '<th>#</th><th>Plate</th><th>Colour</th><th>Brand</th><th>Time</th>'
+    : '<th>#</th><th>Plate</th><th>Time</th>';
+
+  const colSpan = isPrimary ? 5 : 3;
+  const panelId = panelCssId(cam.name);
+
+  const div = document.createElement('div');
+  div.className = 'cam-panel';
+  div.id = 'panel-' + panelId;
+  div.innerHTML = `
+    <div class="cam-panel-header">
+      <div class="db-pulse" id="pulse-${panelId}"></div>
+      <h2>${cam.name}</h2>
+      ${typeBadge}
+      <span class="badge badge-blue" id="count-${panelId}">0 rows</span>
+    </div>
+    <div class="cam-search">
+      <input type="text" placeholder="Search plate…"
+             oninput="onSearch('${cam.name}', this.value)"
+             id="search-${panelId}" />
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>${colHeaders}</tr></thead>
+        <tbody id="tbody-${panelId}">
+          <tr><td colspan="${colSpan}" class="empty-msg">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cam-footer">
+      <div style="width:6px;height:6px;border-radius:50%;background:var(--green);animation:pulse 1.5s infinite"></div>
+      <span id="footer-ts-${panelId}">—</span>
+    </div>
+  `;
+  return div;
+}
+
+function panelCssId(name) { return name.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+// ── Render rows into a panel ─────────────────────────────────────────────────────
+function renderPanel(cam, rows) {
+  const isPrimary = cam.type === 'primary';
+  const colSpan   = isPrimary ? 5 : 3;
+  const panelId   = panelCssId(cam.name);
+  const state     = camState[cam.name];
+
+  const filter = (state.searchFilter || '').toUpperCase();
+  const visible = filter
+    ? rows.filter(r => (r.plate || '').toUpperCase().includes(filter))
+    : rows;
+
+  document.getElementById('count-' + panelId).textContent = visible.length + ' rows';
+
+  const tbody = document.getElementById('tbody-' + panelId);
+  if (!tbody) return;
+
+  if (!visible.length) {
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="empty-msg">No detections yet.</td></tr>`;
+    return;
+  }
+
+  // Newest first
+  const sorted = [...visible].sort((a, b) => (b.id || 0) - (a.id || 0));
+
+  tbody.innerHTML = sorted.map(r => {
+    const isNew = !state.seenIds.has(r.id);
+    state.seenIds.add(r.id);
+
+    const plate = r.plate
+      ? `<span class="plate-badge">${r.plate}</span>`
+      : `<span style="color:var(--muted)">—</span>`;
+
+    const ts = r.detected_at
+      ? new Date(r.detected_at).toLocaleString()
+      : (r.video_time || '—');
+
+    const rowClass = isNew ? 'class="row-new"' : '';
+
+    if (isPrimary) {
+      const colour = r.colour
+        ? `${r.colour}${r.colour_conf != null ? `<span class="conf-pill">${(r.colour_conf*100).toFixed(0)}%</span>` : ''}`
+        : '<span style="color:var(--muted)">—</span>';
+      const brand = r.brand
+        ? `${r.brand}${r.brand_conf != null ? `<span class="conf-pill">${(r.brand_conf*100).toFixed(0)}%</span>` : ''}`
+        : '<span style="color:var(--muted)">—</span>';
+      return `<tr ${rowClass}>
+        <td><span class="badge badge-gray">${r.id}</span></td>
+        <td>${plate}</td>
+        <td>${colour}</td>
+        <td>${brand}</td>
+        <td class="ts-cell">${ts}</td>
+      </tr>`;
+    } else {
+      return `<tr ${rowClass}>
+        <td><span class="badge badge-gray">${r.id}</span></td>
+        <td>${plate}</td>
+        <td class="ts-cell">${ts}</td>
+      </tr>`;
+    }
+  }).join('');
+
+  const ts = document.getElementById('footer-ts-' + panelId);
+  if (ts) ts.textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+// ── Fetch data for one camera ────────────────────────────────────────────────────
+async function loadCamera(cam) {
+  const panelId = panelCssId(cam.name);
+  const pulse   = document.getElementById('pulse-' + panelId);
+  if (pulse) pulse.style.background = 'var(--yellow)';
+
+  const limit = document.getElementById('g-limit').value || 100;
+  const url   = `${BASE}/detections?camera=${encodeURIComponent(cam.name)}&limit=${limit}`;
+
+  let rows;
+  try {
+    rows = await fetch(url).then(r => r.json());
+  } catch {
+    if (pulse) pulse.style.background = 'var(--red)';
+    return;
+  }
+
+  if (!Array.isArray(rows)) { if (pulse) pulse.style.background = 'var(--red)'; return; }
+  if (pulse) pulse.style.background = 'var(--green)';
+
+  camState[cam.name].rows = rows;
+  renderPanel(cam, rows);
+}
+
+// ── Per-panel plate search ───────────────────────────────────────────────────────
+function onSearch(camName, value) {
+  if (!camState[camName]) return;
+  camState[camName].searchFilter = value.trim();
+  const cam = knownCams.find(c => c.name === camName);
+  if (cam) renderPanel(cam, camState[camName].rows);
+}
+
+// ── Load / refresh all cameras ───────────────────────────────────────────────────
+async function loadAllCameras() {
+  let cams;
+  try {
+    cams = await fetch(BASE + '/cameras').then(r => r.json());
+  } catch { return; }
+  if (!Array.isArray(cams)) return;
+
+  const grid  = document.getElementById('cam-grid');
+  const noMsg = document.getElementById('no-cameras');
+
+  // Add panels for new cameras
+  cams.forEach(cam => {
+    if (!knownCams.find(c => c.name === cam.name)) {
+      knownCams.push(cam);
+      if (!camState[cam.name]) camState[cam.name] = { rows: [], seenIds: new Set(), searchFilter: '' };
+      if (noMsg) noMsg.remove();
+      grid.appendChild(buildPanel(cam));
+    }
+  });
+
+  // Remove panels for cameras that disappeared
+  knownCams = knownCams.filter(c => {
+    if (!cams.find(x => x.name === c.name)) {
+      document.getElementById('panel-' + panelCssId(c.name))?.remove();
+      return false;
+    }
+    return true;
+  });
+
+  if (knownCams.length === 0) {
+    if (!document.getElementById('no-cameras')) {
+      const d = document.createElement('div');
+      d.id = 'no-cameras'; d.textContent = 'No cameras registered.';
+      grid.appendChild(d);
+    }
+  }
+
+  // Fetch data for all cameras in parallel
+  await Promise.all(knownCams.map(loadCamera));
+  document.getElementById('last-refresh').textContent =
+    'Refreshed ' + new Date().toLocaleTimeString();
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────────────
+async function loadStats() {
+  let stats;
+  try { stats = await fetch(BASE + '/stats').then(r => r.json()); } catch { return; }
+  if (!Array.isArray(stats)) return;
+
+  const total  = stats.reduce((s, r) => s + (r.total || 0), 0);
+  const plates = stats.reduce((s, r) => s + (r.unique_plates || 0), 0);
+  document.getElementById('stat-total').textContent  = total;
+  document.getElementById('stat-plates').textContent = plates;
+
+  document.getElementById('per-cam-stats').innerHTML = stats.map(s => `
+    <div class="stat-item">
+      <div class="val" style="font-size:1rem">${s.total}</div>
+      <div class="lbl" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${s.camera_name}">${s.camera_name}</div>
+    </div>
+  `).join('');
+}
+
+// ── Health ────────────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const d  = await fetch(BASE + '/health').then(r => r.json());
+    const el = document.getElementById('health-badge');
+    el.textContent = `● Online · ${d.cameras} cam(s)`;
+    el.className   = 'badge badge-green';
+  } catch {
+    const el = document.getElementById('health-badge');
+    el.textContent = '● Offline';
+    el.className = 'badge'; el.style.color = 'var(--red)';
+  }
+}
+
+// ── Auto-refresh ─────────────────────────────────────────────────────────────────
+document.getElementById('auto-refresh').addEventListener('change', function() {
+  if (this.checked) startAR(); else stopAR();
+});
+document.getElementById('g-limit').addEventListener('change', () => {
+  Object.keys(camState).forEach(n => { camState[n].seenIds = new Set(); });
+  loadAllCameras();
+});
+
+function startAR() {
+  stopAR();
+  refreshTimer = setInterval(() => { loadAllCameras(); loadStats(); }, 3000);
+}
+function stopAR() { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; } }
+
+// ── Init ──────────────────────────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([loadAllCameras(), loadStats(), checkHealth()]);
+  startAR();
+  setInterval(checkHealth, 10000);
+}
+
+init();
+</script>
+</body>
+</html>

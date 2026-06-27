@@ -150,7 +150,8 @@
     <h1>ALPR Production Dashboard</h1>
     <div class="sub">Multi-camera licence plate · colour · brand detection</div>
   </div>
-  <div id="health-badge" class="badge badge-gray" style="margin-left:auto">Connecting…</div>
+  <div id="health-badge" class="badge badge-gray" style="margin-left:auto;margin-right:12px">Connecting…</div>
+  <a href="/static/data.html" style="color:var(--accent);text-decoration:none;font-size:0.85rem;font-weight:600;padding:5px 14px;border:1px solid var(--accent);border-radius:6px;white-space:nowrap">Data View →</a>
 </header>
 
 <main>
@@ -356,7 +357,7 @@ function buildCameraCard(cam) {
       <div class="no-feed">Waiting for stream…</div>
       <img class="cam-img"
            onload="this.previousElementSibling.style.display='none'"
-           onerror="this.previousElementSibling.style.display='flex'" />
+           onerror="this.previousElementSibling.style.display='flex';setTimeout(()=>{this.src=this.src.replace(/[?&]t=\d+/,'')+'?t='+Date.now()},2000)" />
     </div>
     <div class="cam-progress"><div class="cam-progress-fg"></div></div>
     <div class="cam-table-wrap">

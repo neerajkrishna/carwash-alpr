@@ -33,21 +33,24 @@ MIN_VEHICLE_AREA  = 0.04         # Minimum fraction of frame area — filters ti
 BYTETRACK_CFG     = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bytetrack.yaml")
 
 
-def get_tracks(frame_bgr: np.ndarray, upper_line: float = 0.0, entry_line: float = 1.0, detector: "YOLO" = None) -> list[dict]:
+def get_tracks(frame_bgr: np.ndarray, upper_line: float = 0.0, entry_line: float = 1.0,
+               detector: "YOLO" = None, entry_axis: str = "horizontal", lower_line: float = 1.0) -> list[dict]:
     """
     Run YOLO + ByteTrack on a frame and return active vehicle tracks.
 
     Filters:
       - YOLO confidence < MIN_CONFIDENCE
       - Bounding box area < MIN_VEHICLE_AREA (too small / distant)
-      - Vehicle centre above UPPER_LINE (outside detection zone)
+      - Vehicle centre above UPPER_LINE (outside detection zone, horizontal axis only)
       - Vehicle already past ENTRY_LINE (already finalized — not returned)
+
+    entry_axis="horizontal": entry_line is a Y fraction — crossed when bottom edge (y2) passes it.
+    entry_axis="vertical":   entry_line is an X fraction — crossed when right edge (x2) passes it.
+                             Used when cars move left-to-right across the frame.
 
     Returns list of track dicts:
       {"track_id": int, "bbox": (x1,y1,x2,y2), "crop": ndarray,
        "confidence": float, "area": int, "primary": bool, "crossed": bool}
-
-    "crossed" = True means the vehicle's bottom edge has reached ENTRY_LINE.
     """
     fh, fw     = frame_bgr.shape[:2]
     frame_area = fh * fw
@@ -72,10 +75,20 @@ def get_tracks(frame_bgr: np.ndarray, upper_line: float = 0.0, entry_line: float
 
         x1, y1, x2, y2 = map(int, box.tolist())
 
-        # Filter by detection zone upper boundary (use vehicle centre)
-        cy = (y1 + y2) / 2
-        if upper_line > 0.0 and (cy / fh) < upper_line:
-            continue
+        # Filter by detection zone boundaries
+        if entry_axis == "vertical":
+            # upper_line = left X boundary, lower_line = right X boundary
+            cx = (x1 + x2) / 2
+            if upper_line > 0.0 and (cx / fw) < upper_line:
+                continue
+            if lower_line < 1.0 and (cx / fw) > lower_line:
+                continue
+        else:
+            cy = (y1 + y2) / 2
+            if upper_line > 0.0 and (cy / fh) < upper_line:
+                continue
+            if lower_line < 1.0 and (cy / fh) > lower_line:
+                continue
 
         # Filter by minimum area
         norm_area = ((x2 - x1) * (y2 - y1)) / frame_area
@@ -86,7 +99,10 @@ def get_tracks(frame_bgr: np.ndarray, upper_line: float = 0.0, entry_line: float
         if crop.size == 0:
             continue
 
-        crossed = (y2 / fh) >= entry_line
+        if entry_axis == "vertical":
+            crossed = (x1 / fw) >= entry_line  # entire vehicle has passed the line
+        else:
+            crossed = (y2 / fh) >= entry_line
 
         tracks.append({
             "track_id":   int(tid.item()),
@@ -232,7 +248,7 @@ def match_plate_to_vehicle(plate_results: list[dict], vehicle_bbox: tuple) -> di
 
 def draw_overlay(frame_rgb: np.ndarray, tracks: list[dict], plate_results: list[dict],
                  track_store: "TrackStore", upper_line: float = 0.0, entry_line: float = 1.0,
-                 camera_name: str = "") -> np.ndarray:
+                 camera_name: str = "", entry_axis: str = "horizontal", lower_line: float = 1.0) -> np.ndarray:
     """
     Draw detection zone lines, vehicle bounding boxes, plate boxes and labels
     onto a copy of the frame. Returns the annotated frame.
@@ -241,17 +257,35 @@ def draw_overlay(frame_rgb: np.ndarray, tracks: list[dict], plate_results: list[
     fh, fw = img.shape[:2]
 
     # Draw detection zone lines
-    if upper_line > 0.0:
-        uy = int(upper_line * fh)
-        cv2.line(img, (0, uy), (fw, uy), (0, 255, 180), 2)
-        cv2.putText(img, "DETECTION ZONE", (8, uy + 18),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 180), 2)
+    uy = int(upper_line * fh) if upper_line > 0.0 else 0
+    ly = int(lower_line * fh) if lower_line < 1.0 else fh
 
-    if entry_line < 1.0:
-        ey = int(entry_line * fh)
-        cv2.line(img, (0, ey), (fw, ey), (0, 200, 255), 2)
-        cv2.putText(img, "ENTRY LINE", (8, ey - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+    if entry_axis == "vertical":
+        # Vertical left/right boundaries define the detection zone
+        lx = int(upper_line * fw) if upper_line > 0.0 else 0
+        rx = int(lower_line * fw) if lower_line < 1.0 else fw
+        if upper_line > 0.0:
+            cv2.line(img, (lx, 0), (lx, fh), (0, 255, 180), 2)
+            cv2.putText(img, "ZONE", (lx + 4, 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 180), 2)
+        if lower_line < 1.0:
+            cv2.line(img, (rx, 0), (rx, fh), (0, 255, 180), 2)
+        # Vertical entry line spans full height within the zone
+        if entry_line < 1.0:
+            ev = int(entry_line * fw)
+            cv2.line(img, (ev, 0), (ev, fh), (0, 200, 255), 2)
+            cv2.putText(img, "ENTRY LINE", (ev + 6, 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+    else:
+        if upper_line > 0.0:
+            cv2.line(img, (0, uy), (fw, uy), (0, 255, 180), 2)
+            cv2.putText(img, "DETECTION ZONE", (8, uy + 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 180), 2)
+        if entry_line < 1.0:
+            ey = int(entry_line * fh)
+            cv2.line(img, (0, ey), (fw, ey), (0, 200, 255), 2)
+            cv2.putText(img, "ENTRY LINE", (8, ey - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
 
     # Camera name overlay
     if camera_name:

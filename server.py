@@ -132,7 +132,9 @@ async def list_cameras():
             "type":       cam.cam_type,
             "source":     cam.source,
             "upper_line": cam.upper_line,
+            "lower_line": cam.lower_line,
             "entry_line": cam.entry_line,
+            "entry_axis": cam.entry_axis,
             "running":    cam.running,
             "done":       cam.done,
             "progress":   cam.progress,
@@ -246,4 +248,10 @@ app.mount(
 @app.get("/", response_class=HTMLResponse)
 async def index():
     with open(os.path.join(_BASE, "static", "index.html")) as f:
+        return f.read()
+
+
+@app.get("/data", response_class=HTMLResponse)
+async def data_view():
+    with open(os.path.join(_BASE, "static", "data.html")) as f:
         return f.read()

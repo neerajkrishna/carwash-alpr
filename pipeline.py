@@ -76,7 +76,9 @@ class CameraPipeline:
 
         # Detection zone — defaults mean full frame (no filtering)
         self.upper_line  = float(config.get("upper_line", 0.0))
+        self.lower_line  = float(config.get("lower_line", 1.0))
         self.entry_line  = float(config.get("entry_line", 1.0))
+        self.entry_axis  = config.get("entry_axis", "horizontal")  # "horizontal" or "vertical"
 
         # Per-camera YOLO detector (own instance so ByteTrack state is not shared)
         self._detector   = YOLO(YOLO_PATH)
@@ -164,7 +166,7 @@ class CameraPipeline:
                         last_plates = read_plates(frame_rgb)
 
                     # ── Vehicle tracking ────────────────────────────────────────
-                    tracks = get_tracks(frame, self.upper_line, self.entry_line, self._detector)
+                    tracks = get_tracks(frame, self.upper_line, self.entry_line, self._detector, self.entry_axis, self.lower_line)
                     current_tids = {t["track_id"] for t in tracks}
 
                     # ── Finalize tracks that disappeared (left frame) ────────────
@@ -223,7 +225,7 @@ class CameraPipeline:
                     if frame_idx % 2 == 0:
                         annotated = draw_overlay(
                             frame_rgb, tracks, last_plates, track_store,
-                            self.upper_line, self.entry_line, self.name,
+                            self.upper_line, self.entry_line, self.name, self.entry_axis, self.lower_line,
                         )
                         ok, buf = cv2.imencode(
                             ".jpg", cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR),
@@ -307,7 +309,10 @@ class CameraPipeline:
         brand = snap.get("brand", "—")
         if require_plate and (not plate or plate == "—"):
             return
-        if not require_plate and (not plate or plate == "—") and (not brand or brand == "—"):
+        # For secondary cameras brand is never detected, so only require plate
+        if not require_plate and self.cam_type == "secondary" and (not plate or plate == "—"):
+            return
+        if not require_plate and self.cam_type == "primary" and (not plate or plate == "—") and (not brand or brand == "—"):
             return
         try:
             insert_detection(

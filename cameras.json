@@ -1,8 +1,22 @@
 [
   {
-    "name":       "Gate-A-Primary",
+    "name":       "XNO-Primary-1",
     "type":       "primary",
-    "source":     "cam2/XNO-6080R_2026_06_13_16_00_00.mkv",
+    "source":     "/Users/neerajkrishna/Downloads/XNO-6080R_2026_06_20_09_03_01.mkv",
+    "upper_line": 0.20,
+    "entry_line": 0.70
+  },
+  {
+    "name":       "XNO-Primary-2",
+    "type":       "primary",
+    "source":     "/Users/neerajkrishna/Downloads/XNO-6080R_2026_06_20_09_06_22.mkv",
+    "upper_line": 0.20,
+    "entry_line": 0.70
+  },
+  {
+    "name":       "QNO-Secondary-1",
+    "type":       "secondary",
+    "source":     "/Users/neerajkrishna/Downloads/QNO-8080R_2026_06_20_09_00_03.mkv",
     "upper_line": 0.20,
     "entry_line": 0.70
   }
