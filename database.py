@@ -102,6 +102,21 @@ def _get_conn():
         _pool.putconn(conn)
 
 
+def _edit_distance(a: str, b: str) -> int:
+    """Levenshtein distance between two strings. Returns 999 if lengths differ by more than 2."""
+    if abs(len(a) - len(b)) > 2:
+        return 999
+    m, n = len(a), len(b)
+    dp = list(range(n + 1))
+    for i in range(1, m + 1):
+        prev, dp[0] = dp[0], i
+        for j in range(1, n + 1):
+            temp = dp[j]
+            dp[j] = prev if a[i - 1] == b[j - 1] else 1 + min(prev, dp[j], dp[j - 1])
+            prev = temp
+    return dp[n]
+
+
 def insert_detection(
     camera_name: str,
     camera_type: str,
@@ -137,33 +152,81 @@ def insert_detection(
 
     with _get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO detections
-                    (camera_name, camera_type, plate, colour, colour_conf,
-                     brand, brand_conf, video_time)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (plate, camera_name) DO UPDATE SET
-                    colour      = CASE
-                                    WHEN EXCLUDED.colour_conf IS NOT NULL
-                                     AND (detections.colour_conf IS NULL
-                                          OR EXCLUDED.colour_conf > detections.colour_conf)
-                                    THEN EXCLUDED.colour
-                                    ELSE detections.colour
-                                  END,
-                    colour_conf = GREATEST(detections.colour_conf, EXCLUDED.colour_conf),
-                    brand       = CASE
-                                    WHEN EXCLUDED.brand_conf IS NOT NULL
-                                     AND (detections.brand_conf IS NULL
-                                          OR EXCLUDED.brand_conf > detections.brand_conf)
-                                    THEN EXCLUDED.brand
-                                    ELSE detections.brand
-                                  END,
-                    brand_conf  = GREATEST(detections.brand_conf, EXCLUDED.brand_conf),
-                    detected_at = NOW()
-                RETURNING id;
-            """, (camera_name, camera_type, plate, colour, colour_conf,
-                  brand, brand_conf, video_time))
-            row_id = cur.fetchone()[0]
+            row_id = None
+
+            # Check for a prefix-match plate from the same camera.
+            # e.g. existing "ADI28" and new "ADI283" — one is a truncated read of the other.
+            if plate:
+                # Step 1: prefix match (one plate is a truncated read of the other)
+                cur.execute("""
+                    SELECT id, plate FROM detections
+                    WHERE camera_name = %s AND plate IS NOT NULL
+                      AND (%s LIKE plate || '%%' OR plate LIKE %s || '%%')
+                    ORDER BY detected_at DESC
+                    LIMIT 2;
+                """, (camera_name, plate, plate))
+                match = cur.fetchone()
+                if match:
+                    existing_id, existing_plate = match
+                    if len(plate) > len(existing_plate):
+                        cur.execute("""
+                            UPDATE detections SET plate = %s, detected_at = NOW()
+                            WHERE id = %s RETURNING id;
+                        """, (plate, existing_id))
+                        row_id = cur.fetchone()[0]
+                    else:
+                        row_id = existing_id
+
+                # Step 2: fuzzy match — check only the 2 most recent records for this camera
+                if row_id is None:
+                    cur.execute("""
+                        SELECT id, plate FROM detections
+                        WHERE camera_name = %s AND plate IS NOT NULL
+                          AND ABS(length(plate) - length(%s)) <= 2
+                        ORDER BY detected_at DESC
+                        LIMIT 2;
+                    """, (camera_name, plate))
+                    for existing_id, existing_plate in cur.fetchall():
+                        if _edit_distance(plate, existing_plate) <= 2:
+                            if len(plate) >= len(existing_plate):
+                                cur.execute("""
+                                    UPDATE detections SET plate = %s, detected_at = NOW()
+                                    WHERE id = %s RETURNING id;
+                                """, (plate, existing_id))
+                                row_id = cur.fetchone()[0]
+                            else:
+                                row_id = existing_id
+                            break
+
+            if row_id is None:
+                cur.execute("""
+                    INSERT INTO detections
+                        (camera_name, camera_type, plate, colour, colour_conf,
+                         brand, brand_conf, video_time)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (plate, camera_name) DO UPDATE SET
+                        colour      = CASE
+                                        WHEN EXCLUDED.colour_conf IS NOT NULL
+                                         AND (detections.colour_conf IS NULL
+                                              OR EXCLUDED.colour_conf > detections.colour_conf)
+                                        THEN EXCLUDED.colour
+                                        ELSE detections.colour
+                                      END,
+                        colour_conf = GREATEST(detections.colour_conf, EXCLUDED.colour_conf),
+                        brand       = CASE
+                                        WHEN EXCLUDED.brand_conf IS NOT NULL
+                                         AND (detections.brand_conf IS NULL
+                                              OR EXCLUDED.brand_conf > detections.brand_conf)
+                                        THEN EXCLUDED.brand
+                                        ELSE detections.brand
+                                      END,
+                        brand_conf  = GREATEST(detections.brand_conf, EXCLUDED.brand_conf),
+                        detected_at = NOW()
+                    RETURNING id;
+                """, (camera_name, camera_type, plate, colour, colour_conf,
+                      brand, brand_conf, video_time))
+                row_id = cur.fetchone()[0]
+
         conn.commit()
 
     logger.debug(f"Upserted detection id={row_id} camera={camera_name} plate={plate}")

@@ -1,17 +1,18 @@
 [
   {
-    "name":       "XNO-Primary-1",
-    "type":       "primary",
-    "source":     "/Users/neerajkrishna/Downloads/XNO-6080R_2026_06_20_09_03_01.mkv",
-    "upper_line": 0.20,
-    "entry_line": 0.70
+    "name":            "XNO-Primary-1",
+    "type":            "primary",
+    "source":          "/Users/neerajkrishna/Downloads/XNO-6080R_2026_06_20_09_03_01.mkv",
+    "upper_line":      0.20,
+    "entry_line":      0.85,
+    "min_plate_count": 2
   },
   {
     "name":       "XNO-Primary-2",
     "type":       "primary",
     "source":     "/Users/neerajkrishna/Downloads/XNO-6080R_2026_06_20_09_06_22.mkv",
-    "upper_line": 0.20,
-    "entry_line": 0.70
+    "upper_line": 0.30,
+    "entry_line": 0.85
   },
   {
     "name":       "QNO-Secondary-1",

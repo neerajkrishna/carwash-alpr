@@ -34,14 +34,14 @@ from datetime import datetime
 
 from ultralytics import YOLO
 from models import detect_colour, detect_brand, read_plates, YOLO_PATH
-from tracker import get_tracks, TrackStore, match_plate_to_vehicle, draw_overlay
+from tracker import get_tracks, TrackStore, draw_overlay
 from database import insert_detection
 
 logger = logging.getLogger("pipeline")
 
 # ── Tunable constants ──────────────────────────────────────────────────────────
 CLASSIFY_EVERY_N   = 5    # Run colour/brand every N frames
-PLATE_EVERY_N      = 5    # Run plate reader every N frames
+PLATE_EVERY_N      = 2    # Run plate reader every N frames
 MAX_VIDEO_WIDTH    = 1280  # Downscale frames wider than this (saves CPU)
 JPEG_QUALITY       = 70    # MJPEG stream quality
 RECONNECT_DELAY_S  = 3.0   # Seconds to wait before reconnecting a dropped stream
@@ -79,6 +79,9 @@ class CameraPipeline:
         self.lower_line  = float(config.get("lower_line", 1.0))
         self.entry_line  = float(config.get("entry_line", 1.0))
         self.entry_axis  = config.get("entry_axis", "horizontal")  # "horizontal" or "vertical"
+
+        # Minimum number of consistent plate reads before writing to DB
+        self.min_plate_count = int(config.get("min_plate_count", 1))
 
         # Per-camera YOLO detector (own instance so ByteTrack state is not shared)
         self._detector   = YOLO(YOLO_PATH)
@@ -135,8 +138,7 @@ class CameraPipeline:
             frame_idx = 0
 
             track_store = TrackStore()
-            last_plates: list[dict] = []
-            active_tids: set[int]   = set()   # track IDs seen in previous frame
+            active_tids: set[int] = set()   # track IDs seen in previous frame
 
             logger.info(f"[{self.name}] Stream opened. fps={fps:.1f} scale={scale:.2f}")
 
@@ -152,6 +154,7 @@ class CameraPipeline:
                         break
 
                     frame_idx += 1
+
                     if scale < 1.0:
                         frame = cv2.resize(frame, (0, 0), fx=scale, fy=scale)
 
@@ -160,10 +163,6 @@ class CameraPipeline:
                     time_str = f"{int(ts)//60:02d}:{int(ts)%60:02d}"
 
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-                    # ── Plate detection (every PLATE_EVERY_N frames) ────────────
-                    if frame_idx % PLATE_EVERY_N == 0:
-                        last_plates = read_plates(frame_rgb)
 
                     # ── Vehicle tracking ────────────────────────────────────────
                     tracks = get_tracks(frame, self.upper_line, self.entry_line, self._detector, self.entry_axis, self.lower_line)
@@ -201,17 +200,20 @@ class CameraPipeline:
                                     self._write_to_db(tid, snap, time_str)
                                 continue
 
-                            # ── Classification (primary cameras only) ──────────
-                            if self.cam_type == "primary":
-                                colour, colour_conf = detect_colour(t["crop"])
-                                brand,  brand_conf  = detect_brand(t["crop"])
-                                track_store.update_colour(tid, colour, colour_conf, time_str)
-                                track_store.update_brand(tid, brand, brand_conf, time_str)
-
-                            # ── Plate matching ──────────────────────────────────
-                            matched = match_plate_to_vehicle(last_plates, t["bbox"])
-                            if matched:
-                                track_store.update_plate(tid, matched["plate"], matched["confidence"])
+                            # ── Plate detection on vehicle crop ─────────────────
+                            if frame_idx % PLATE_EVERY_N == 0:
+                                x1, y1, x2, y2 = t["bbox"]
+                                fh, fw = frame_rgb.shape[:2]
+                                pad = 20
+                                cx1 = max(0, x1 - pad)
+                                cy1 = max(0, y1 - pad)
+                                cx2 = min(fw, x2 + pad)
+                                cy2 = min(fh, y2 + pad)
+                                crop_rgb = frame_rgb[cy1:cy2, cx1:cx2]
+                                plates = read_plates(crop_rgb)
+                                if plates:
+                                    best = max(plates, key=lambda p: p["confidence"])
+                                    track_store.update_plate(tid, best["plate"], best["confidence"])
 
                             # ── Update live log row ─────────────────────────────
                             snap = track_store.snapshot(tid)
@@ -220,20 +222,6 @@ class CameraPipeline:
                     # ── Update progress (file sources) ──────────────────────────
                     if is_file:
                         self.progress = min(round(frame_idx / total * 100), 99)
-
-                    # ── Encode annotated JPEG for streaming ─────────────────────
-                    if frame_idx % 2 == 0:
-                        annotated = draw_overlay(
-                            frame_rgb, tracks, last_plates, track_store,
-                            self.upper_line, self.entry_line, self.name, self.entry_axis, self.lower_line,
-                        )
-                        ok, buf = cv2.imencode(
-                            ".jpg", cv2.cvtColor(annotated, cv2.COLOR_RGB2BGR),
-                            [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY],
-                        )
-                        if ok:
-                            with self._lock:
-                                self.latest_jpeg = buf.tobytes()
 
             finally:
                 cap.release()
@@ -305,14 +293,9 @@ class CameraPipeline:
         require_plate=False allows saving vehicles that left frame without a plate read,
         but still requires at least a plate or brand to avoid all-empty rows.
         """
-        plate = snap.get("plate", "—")
-        brand = snap.get("brand", "—")
-        if require_plate and (not plate or plate == "—"):
-            return
-        # For secondary cameras brand is never detected, so only require plate
-        if not require_plate and self.cam_type == "secondary" and (not plate or plate == "—"):
-            return
-        if not require_plate and self.cam_type == "primary" and (not plate or plate == "—") and (not brand or brand == "—"):
+        plate     = snap.get("plate", "—")
+        has_plate = bool(plate and plate != "—") and snap.get("plate_count", 0) >= self.min_plate_count
+        if not has_plate:
             return
         try:
             insert_detection(

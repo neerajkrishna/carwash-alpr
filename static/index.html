@@ -80,16 +80,6 @@
     border-bottom: 1px solid var(--border);
   }
   .cam-header h3 { font-size: 0.95rem; flex: 1; }
-  .cam-feed {
-    background: #000; position: relative; overflow: hidden;
-  }
-  .cam-feed.primary-feed   { aspect-ratio: 16/9; }
-  .cam-feed.secondary-feed { aspect-ratio: 16/9; }
-  .cam-feed img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .cam-feed .no-feed {
-    position: absolute; inset: 0; display: flex; align-items: center;
-    justify-content: center; color: var(--muted); font-size: 0.85rem;
-  }
   .cam-progress { height: 3px; background: var(--border); }
   .cam-progress-fg { height: 100%; background: var(--accent); transition: width 0.3s; width: 0%; }
 
@@ -319,8 +309,6 @@ async function refreshCameras() {
     if (!card) {
       card = buildCameraCard(cam);
       grid.appendChild(card);
-      const img = card.querySelector('.cam-img');
-      img.src = BASE + '/stream/' + encodeURIComponent(cam.name) + '?t=' + Date.now();
     }
 
     const prog = card.querySelector('.cam-progress-fg');
@@ -341,8 +329,6 @@ function buildCameraCard(cam) {
     ? '<span class="badge badge-green">PRIMARY</span>'
     : '<span class="badge badge-orange">SECONDARY</span>';
 
-  const feedClass = isPrimary ? 'primary-feed' : 'secondary-feed';
-
   const cols = isPrimary
     ? '<th>Plate</th><th>Colour</th><th>Brand</th><th>Time</th><th></th>'
     : '<th>Plate</th><th>Time</th><th></th>';
@@ -352,12 +338,6 @@ function buildCameraCard(cam) {
       <h3>${cam.name}</h3>
       ${typeBadge}
       <button class="btn btn-danger btn-sm" onclick="removeCamera('${cam.name}')">✕ Stop</button>
-    </div>
-    <div class="cam-feed ${feedClass}">
-      <div class="no-feed">Waiting for stream…</div>
-      <img class="cam-img"
-           onload="this.previousElementSibling.style.display='none'"
-           onerror="this.previousElementSibling.style.display='flex';setTimeout(()=>{this.src=this.src.replace(/[?&]t=\d+/,'')+'?t='+Date.now()},2000)" />
     </div>
     <div class="cam-progress"><div class="cam-progress-fg"></div></div>
     <div class="cam-table-wrap">

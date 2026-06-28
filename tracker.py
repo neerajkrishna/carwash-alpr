@@ -171,11 +171,31 @@ class TrackStore:
             entry["brand_time"] = time_str
 
     def update_plate(self, tid: int, plate: str, conf: float):
-        """Update best plate only if new confidence is strictly higher."""
-        entry = self._store.setdefault(tid, self._new_entry())
-        if conf > entry.get("plate_conf", 0.0):
-            entry["plate"]      = plate
-            entry["plate_conf"] = conf
+        """
+        Update best plate. Prefers longer reads when one is a prefix of the other
+        (e.g. ADI283 beats ADI28 even if ADI28 had higher confidence).
+        Falls back to confidence comparison for unrelated strings.
+        """
+        entry    = self._store.setdefault(tid, self._new_entry())
+        existing = entry.get("plate", "—")
+
+        if existing == "—":
+            entry["plate"] = plate; entry["plate_conf"] = conf
+            entry["plate_count"] = 1; return
+
+        if plate.startswith(existing) and len(plate) > len(existing):
+            # New read is a longer extension — prefer it and count as confirmation
+            entry["plate"] = plate; entry["plate_conf"] = conf
+            entry["plate_count"] = entry.get("plate_count", 1) + 1
+        elif existing.startswith(plate):
+            # Existing is longer — just confirm it
+            entry["plate_count"] = entry.get("plate_count", 1) + 1
+        elif plate == existing:
+            entry["plate_count"] = entry.get("plate_count", 1) + 1
+        elif conf > entry.get("plate_conf", 0.0):
+            # Unrelated string with higher confidence — reset, new candidate
+            entry["plate"] = plate; entry["plate_conf"] = conf
+            entry["plate_count"] = 1
 
     def finalize(self, tid: int):
         """Lock this track — no further updates after this point."""
@@ -203,6 +223,7 @@ class TrackStore:
             "brand_conf":  e.get("brand_conf", 0.0),
             "plate":       e.get("plate", "—"),
             "plate_conf":  e.get("plate_conf", 0.0),
+            "plate_count": e.get("plate_count", 0),
             "finalized":   e.get("finalized", False),
         }
 
@@ -212,7 +233,7 @@ class TrackStore:
         return {
             "colour": "?", "colour_conf": 0.0, "colour_votes": [],
             "brand": "—",  "brand_conf": 0.0,
-            "plate": "—",  "plate_conf": 0.0,
+            "plate": "—",  "plate_conf": 0.0, "plate_count": 0,
             "finalized": False,
             "first_seen": time.time(),
         }

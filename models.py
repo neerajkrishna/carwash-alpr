@@ -214,7 +214,10 @@ def read_plates(frame_rgb: "np.ndarray") -> list[dict]:
             bb   = r.detection.bounding_box if r.detection else None
             bbox = (int(bb.x1), int(bb.y1), int(bb.x2), int(bb.y2)) if bb else None
             text = r.ocr.text.upper().strip() if r.ocr and r.ocr.text else None
-            if text and bbox and len(text) >= 3 and not all(c == text[0] for c in text) and float(conf) >= 0.45:
+            has_letter      = any(c.isalpha() for c in (text or ""))
+            all_alnum       = all(c.isalnum() for c in (text or ""))
+            starts_w_letter = (text or "")[:1].isalpha()
+            if text and bbox and len(text) >= 3 and has_letter and all_alnum and starts_w_letter and not all(c == text[0] for c in text) and float(conf) >= 0.55:
                 results.append({"plate": text, "confidence": float(conf), "bbox": bbox})
     except Exception:
         pass
