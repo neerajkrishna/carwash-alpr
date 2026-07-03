@@ -134,7 +134,8 @@ class CameraPipeline:
             fps       = cap.get(cv2.CAP_PROP_FPS) or 25.0
             raw_w     = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             scale     = min(1.0, MAX_VIDEO_WIDTH / raw_w) if raw_w > MAX_VIDEO_WIDTH else 1.0
-            total     = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+            _raw_total = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+            total     = int(_raw_total) if (0 < _raw_total < 1e12) else 0
             frame_idx = 0
 
             track_store = TrackStore()
@@ -220,7 +221,7 @@ class CameraPipeline:
                             self._upsert_log_row(tid, snap, time_str)
 
                     # ── Update progress (file sources) ──────────────────────────
-                    if is_file:
+                    if is_file and total > 0:
                         self.progress = min(round(frame_idx / total * 100), 99)
 
             finally:

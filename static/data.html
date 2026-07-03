@@ -139,6 +139,10 @@
     <div class="sub">Per-camera detections · no live streams</div>
   </div>
   <span id="health-badge" class="badge badge-gray" style="margin-left:auto;margin-right:12px">Connecting…</span>
+  <button class="nav-link" id="btn-start-all" onclick="startAllCameras()" style="border-color:var(--green);color:var(--green)">▶ Start All</button>
+  <button class="nav-link" id="btn-stop-all"  onclick="stopAllCameras()"  style="border-color:var(--red);color:var(--red)">■ Stop All</button>
+  <a href="/track" class="nav-link" style="margin-right:8px">Track View →</a>
+  <a href="/docs" class="nav-link" style="margin-right:8px" target="_blank">API Docs</a>
   <a href="/" class="nav-link">← Live Dashboard</a>
 </header>
 
@@ -424,6 +428,33 @@ function startAR() {
   refreshTimer = setInterval(() => { loadAllCameras(); loadStats(); }, 3000);
 }
 function stopAR() { if (refreshTimer) { clearInterval(refreshTimer); refreshTimer = null; } }
+
+// ── Start / Stop all cameras ─────────────────────────────────────────────────────
+async function startAllCameras() {
+  const btn = document.getElementById('btn-start-all');
+  btn.textContent = 'Starting…'; btn.disabled = true;
+  try {
+    await fetch(BASE + '/cameras/reload', { method: 'POST' });
+    await loadAllCameras(); await loadStats(); await checkHealth();
+  } catch(e) { console.error(e); }
+  btn.textContent = '▶ Start All'; btn.disabled = false;
+}
+
+async function stopAllCameras() {
+  const btn = document.getElementById('btn-stop-all');
+  btn.textContent = 'Stopping…'; btn.disabled = true;
+  try {
+    const cams = [...knownCams];
+    await Promise.all(cams.map(cam =>
+      fetch(`${BASE}/cameras/${encodeURIComponent(cam.name)}`, { method: 'DELETE' })
+    ));
+    knownCams = [];
+    Object.keys(camState).forEach(k => delete camState[k]);
+    document.getElementById('cam-grid').innerHTML = '<div id="no-cameras">All cameras stopped.</div>';
+    await checkHealth();
+  } catch(e) { console.error(e); }
+  btn.textContent = '■ Stop All'; btn.disabled = false;
+}
 
 // ── Init ──────────────────────────────────────────────────────────────────────────
 async function init() {

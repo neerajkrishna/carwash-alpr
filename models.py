@@ -217,7 +217,7 @@ def read_plates(frame_rgb: "np.ndarray") -> list[dict]:
             has_letter      = any(c.isalpha() for c in (text or ""))
             all_alnum       = all(c.isalnum() for c in (text or ""))
             starts_w_letter = (text or "")[:1].isalpha()
-            if text and bbox and len(text) >= 3 and has_letter and all_alnum and starts_w_letter and not all(c == text[0] for c in text) and float(conf) >= 0.55:
+            if text and bbox and len(text) >= 5 and has_letter and all_alnum and starts_w_letter and not all(c == text[0] for c in text) and float(conf) >= 0.55:
                 results.append({"plate": text, "confidence": float(conf), "bbox": bbox})
     except Exception:
         pass

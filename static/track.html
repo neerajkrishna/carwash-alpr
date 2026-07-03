@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ALPR — Track View</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+    --green: #3fb950; --orange: #f0883e; --red: #f85149;
+    --yellow: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+  /* ── Header ── */
+  header {
+    background: var(--card); border-bottom: 1px solid var(--border);
+    padding: 14px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 0.85rem; }
+  .nav-link {
+    color: var(--accent); text-decoration: none;
+    font-size: 0.85rem; font-weight: 600; padding: 5px 14px;
+    border: 1px solid var(--accent); border-radius: 6px; white-space: nowrap;
+  }
+  .nav-link:hover { background: #112040; }
+
+  /* ── Badges ── */
+  .badge { padding: 2px 8px; border-radius: 12px; font-size: 0.72rem; font-weight: 600; }
+  .badge-green  { background: #1a3a2a; color: var(--green); }
+  .badge-orange { background: #3a2a10; color: var(--orange); }
+  .badge-gray   { background: #21262d; color: var(--muted); }
+  .badge-blue   { background: #112040; color: var(--accent); }
+  .badge-red    { background: #3a1010; color: var(--red); }
+
+  /* ── Main layout ── */
+  main { padding: 20px 24px; }
+
+  /* ── Tab switcher ── */
+  .tabs {
+    display: flex; gap: 0; margin-bottom: 24px;
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden; width: fit-content;
+  }
+  .tab-btn {
+    background: var(--card); color: var(--muted); border: none;
+    padding: 9px 22px; font-size: 0.85rem; font-weight: 600;
+    cursor: pointer; transition: background 0.15s, color 0.15s;
+    border-right: 1px solid var(--border);
+  }
+  .tab-btn:last-child { border-right: none; }
+  .tab-btn.active { background: var(--accent); color: #0d1117; }
+  .tab-btn:not(.active):hover { background: #1c2128; color: var(--text); }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ── Station view ── */
+  .stations-grid {
+    display: flex; gap: 20px; flex-wrap: wrap; align-items: flex-start;
+  }
+
+  .station-card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+    flex: 1; min-width: 240px; max-width: 380px;
+  }
+  .station-card-header {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .station-card-header h3 { font-size: 0.95rem; font-weight: 600; flex: 1; }
+
+  .station-role-entry  { border-top: 3px solid var(--green); }
+  .station-role-middle { border-top: 3px solid var(--accent); }
+  .station-role-exit   { border-top: 3px solid var(--red); }
+
+  .station-list { padding: 8px 0; min-height: 60px; }
+  .station-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; border-bottom: 1px solid var(--border);
+    gap: 12px;
+  }
+  .station-item:last-child { border-bottom: none; }
+  .plate-badge {
+    background: #3a2a10; color: var(--orange); padding: 2px 8px;
+    border-radius: 4px; font-weight: 700; font-family: monospace; font-size: 0.88rem;
+  }
+  .det-time { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+  .empty-station {
+    color: var(--muted); font-size: 0.8rem; padding: 18px 16px; text-align: center;
+  }
+
+  /* ── In-Premise view ── */
+  .premise-header {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 18px;
+  }
+  .premise-header h2 { font-size: 1rem; font-weight: 600; }
+
+  .premise-table-wrap {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  th {
+    background: var(--bg); color: var(--muted); padding: 8px 14px;
+    text-align: left; font-weight: 500; font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    position: sticky; top: 0; z-index: 1;
+    border-bottom: 1px solid var(--border);
+  }
+  td { padding: 9px 14px; border-top: 1px solid var(--border); vertical-align: middle; }
+  tr:hover td { background: #1c2128; }
+  .empty-premise {
+    color: var(--muted); font-size: 0.85rem; padding: 32px; text-align: center;
+  }
+  .station-tag {
+    font-size: 0.68rem; padding: 2px 7px; border-radius: 4px;
+    background: #112040; color: var(--accent); font-weight: 600;
+  }
+  .ts-cell { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+
+  /* ── Refresh indicator ── */
+  .refresh-bar {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+  }
+  .pulse-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+    animation: pulse 1.5s infinite; flex-shrink: 0;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .refresh-ts { font-size: 0.75rem; color: var(--muted); }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    .stations-grid { flex-direction: column; }
+    .station-card { max-width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span style="font-size:1.5rem">&#128663;</span>
+  <div>
+    <h1>ALPR — Track View</h1>
+    <div class="sub">Car wash station tracker &amp; premise monitor</div>
+  </div>
+  <span id="health-badge" class="badge badge-gray" style="margin-left:auto;margin-right:12px">Connecting…</span>
+  <a href="/" class="nav-link" style="margin-right:8px">&#8592; Dashboard</a>
+  <a href="/data" class="nav-link" style="margin-right:8px">Data View &#8594;</a>
+  <a href="/docs" class="nav-link" target="_blank">API Docs</a>
+</header>
+
+<main>
+
+  <!-- Tab switcher -->
+  <div class="tabs">
+    <button class="tab-btn active" id="tab-btn-station" onclick="switchTab('station')">Station View</button>
+    <button class="tab-btn" id="tab-btn-premise" onclick="switchTab('premise')">In Premise</button>
+  </div>
+
+  <!-- ── Tab 1: Station View ── -->
+  <div class="tab-panel active" id="tab-station">
+    <div class="refresh-bar">
+      <div class="pulse-dot"></div>
+      <span class="refresh-ts" id="station-refresh-ts">Refreshing…</span>
+    </div>
+    <div class="stations-grid" id="stations-grid">
+      <div class="empty-station" style="width:100%">Loading cameras…</div>
+    </div>
+  </div>
+
+  <!-- ── Tab 2: In Premise ── -->
+  <div class="tab-panel" id="tab-premise">
+    <div class="refresh-bar">
+      <div class="pulse-dot"></div>
+      <span class="refresh-ts" id="premise-refresh-ts">Refreshing…</span>
+    </div>
+    <div class="premise-header">
+      <h2>Cars Currently On Premises</h2>
+      <span class="badge badge-green" id="premise-count">0 cars</span>
+    </div>
+    <div class="premise-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Plate</th>
+            <th>Entry Time</th>
+            <th>Current Station</th>
+            <th>Time at Station</th>
+          </tr>
+        </thead>
+        <tbody id="premise-tbody">
+          <tr><td colspan="4" class="empty-premise">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const BASE = window.location.origin;
+let cameras = [];       // [{name, type}] ordered as returned from /cameras
+let refreshTimer = null;
+
+// ── Tab switching ────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.getElementById('tab-btn-' + tab).classList.add('active');
+}
+
+// ── Health check ─────────────────────────────────────────────────────────────────
+async function checkHealth() {
+  const el = document.getElementById('health-badge');
+  try {
+    const d = await fetch(BASE + '/health').then(r => r.json());
+    el.textContent = '● Online · ' + d.cameras + ' cam(s)';
+    el.className = 'badge badge-green';
+  } catch {
+    el.textContent = '● Offline';
+    el.className = 'badge badge-red';
+  }
+}
+
+// ── Format a detected_at timestamp for display ───────────────────────────────────
+function fmtTime(isoStr) {
+  if (!isoStr) return '—';
+  try { return new Date(isoStr).toLocaleTimeString(); } catch { return isoStr; }
+}
+
+// ── Build / update station cards ─────────────────────────────────────────────────
+function renderStationView(cameras, detections) {
+  const grid = document.getElementById('stations-grid');
+
+  // Determine the most-recent camera per plate: plate → {camera_name, detected_at}
+  const latestByCam = {}; // camera_name → [{plate, detected_at}]
+  cameras.forEach(c => { latestByCam[c.name] = []; });
+
+  // Group detections by plate, keep only the most-recent detection per plate
+  const latestPerPlate = {}; // plate → {camera_name, detected_at}
+  detections.forEach(d => {
+    if (!d.plate) return;
+    const existing = latestPerPlate[d.plate];
+    if (!existing || new Date(d.detected_at) > new Date(existing.detected_at)) {
+      latestPerPlate[d.plate] = { camera_name: d.camera_name, detected_at: d.detected_at };
+    }
+  });
+
+  // Bucket plates into their current station
+  Object.entries(latestPerPlate).forEach(([plate, info]) => {
+    if (latestByCam[info.camera_name]) {
+      latestByCam[info.camera_name].push({ plate, detected_at: info.detected_at });
+    }
+  });
+
+  // Sort each bucket newest-first
+  cameras.forEach(c => {
+    latestByCam[c.name].sort((a, b) => new Date(b.detected_at) - new Date(a.detected_at));
+  });
+
+  // Assign roles for border colouring
+  function roleClass(idx, total) {
+    if (idx === 0) return 'station-role-entry';
+    if (idx === total - 1) return 'station-role-exit';
+    return 'station-role-middle';
+  }
+
+  function roleBadge(idx, total) {
+    if (idx === 0) return '<span class="badge badge-green">ENTRY</span>';
+    if (idx === total - 1) return '<span class="badge badge-red">EXIT</span>';
+    return '<span class="badge badge-blue">MID</span>';
+  }
+
+  // Clear and rebuild cards (simple full-replace; list is small)
+  grid.innerHTML = '';
+
+  if (cameras.length === 0) {
+    grid.innerHTML = '<div class="empty-station" style="width:100%">No cameras registered.</div>';
+    return;
+  }
+
+  cameras.forEach((cam, idx) => {
+    const plates = latestByCam[cam.name];
+    const count  = plates.length;
+
+    const card = document.createElement('div');
+    card.className = 'station-card ' + roleClass(idx, cameras.length);
+
+    const countBadge = count > 0
+      ? '<span class="badge badge-orange">' + count + ' car' + (count !== 1 ? 's' : '') + '</span>'
+      : '<span class="badge badge-gray">empty</span>';
+
+    let listHtml = '';
+    if (plates.length === 0) {
+      listHtml = '<div class="empty-station">No cars at this station</div>';
+    } else {
+      listHtml = plates.map(p => `
+        <div class="station-item">
+          <span class="plate-badge">${escHtml(p.plate)}</span>
+          <span class="det-time">${fmtTime(p.detected_at)}</span>
+        </div>
+      `).join('');
+    }
+
+    card.innerHTML = `
+      <div class="station-card-header">
+        <h3>${escHtml(cam.name)}</h3>
+        ${roleBadge(idx, cameras.length)}
+        ${countBadge}
+      </div>
+      <div class="station-list">${listHtml}</div>
+    `;
+    grid.appendChild(card);
+  });
+
+  document.getElementById('station-refresh-ts').textContent =
+    'Last updated ' + new Date().toLocaleTimeString();
+}
+
+// ── Build / update In-Premise table ─────────────────────────────────────────────
+function renderPremiseView(cameras, detections) {
+  if (cameras.length === 0) {
+    document.getElementById('premise-count').textContent = '0 cars';
+    document.getElementById('premise-tbody').innerHTML =
+      '<tr><td colspan="4" class="empty-premise">No cameras registered.</td></tr>';
+    return;
+  }
+
+  const entryCam = cameras[0].name;
+  const exitCam  = cameras[cameras.length - 1].name;
+
+  // All plates ever seen by entry camera
+  const entryPlates  = new Set();
+  // earliest detected_at at entry per plate
+  const entryTimes   = {};
+
+  // All plates ever seen by exit camera
+  const exitPlates   = new Set();
+
+  detections.forEach(d => {
+    if (!d.plate) return;
+    if (d.camera_name === entryCam) {
+      entryPlates.add(d.plate);
+      const t = d.detected_at;
+      if (!entryTimes[d.plate] || new Date(t) < new Date(entryTimes[d.plate])) {
+        entryTimes[d.plate] = t;
+      }
+    }
+    if (d.camera_name === exitCam) {
+      exitPlates.add(d.plate);
+    }
+  });
+
+  // In premise = seen at entry but not yet at exit
+  const inPremise = [...entryPlates].filter(p => !exitPlates.has(p));
+
+  // For each in-premise plate, find current station (most-recent detection)
+  const latestPerPlate = {}; // plate → {camera_name, detected_at}
+  detections.forEach(d => {
+    if (!d.plate || !inPremise.includes(d.plate)) return;
+    const existing = latestPerPlate[d.plate];
+    if (!existing || new Date(d.detected_at) > new Date(existing.detected_at)) {
+      latestPerPlate[d.plate] = { camera_name: d.camera_name, detected_at: d.detected_at };
+    }
+  });
+
+  // Sort in-premise plates by entry time (earliest first)
+  inPremise.sort((a, b) => new Date(entryTimes[a]) - new Date(entryTimes[b]));
+
+  document.getElementById('premise-count').textContent =
+    inPremise.length + ' car' + (inPremise.length !== 1 ? 's' : '');
+
+  const tbody = document.getElementById('premise-tbody');
+
+  if (inPremise.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty-premise">No cars currently on premises.</td></tr>';
+  } else {
+    tbody.innerHTML = inPremise.map(plate => {
+      const entryTime   = fmtTime(entryTimes[plate]);
+      const latest      = latestPerPlate[plate];
+      const stationName = latest ? latest.camera_name : entryCam;
+      const stationTime = latest ? fmtTime(latest.detected_at) : entryTime;
+      return `
+        <tr>
+          <td><span class="plate-badge">${escHtml(plate)}</span></td>
+          <td class="ts-cell">${entryTime}</td>
+          <td><span class="station-tag">${escHtml(stationName)}</span></td>
+          <td class="ts-cell">${stationTime}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  document.getElementById('premise-refresh-ts').textContent =
+    'Last updated ' + new Date().toLocaleTimeString();
+}
+
+// ── Main refresh cycle ───────────────────────────────────────────────────────────
+async function refresh() {
+  let cams, dets;
+  try {
+    [cams, dets] = await Promise.all([
+      fetch(BASE + '/cameras').then(r => r.json()),
+      fetch(BASE + '/detections?limit=500').then(r => r.json()),
+    ]);
+  } catch {
+    document.getElementById('station-refresh-ts').textContent = 'Fetch failed — retrying…';
+    document.getElementById('premise-refresh-ts').textContent = 'Fetch failed — retrying…';
+    return;
+  }
+
+  if (!Array.isArray(cams) || !Array.isArray(dets)) return;
+
+  cameras = cams;
+
+  renderStationView(cameras, dets);
+  renderPremiseView(cameras, dets);
+}
+
+// ── Utility: HTML escape ─────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────────
+async function init() {
+  await Promise.all([refresh(), checkHealth()]);
+  setInterval(refresh, 3000);
+  setInterval(checkHealth, 10000);
+}
+
+init();
+</script>
+</body>
+</html>

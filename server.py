@@ -45,7 +45,19 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 logger = logging.getLogger("server")
 
 # ── FastAPI app ────────────────────────────────────────────────────────────────
-app = FastAPI(title="ALPR Production Server")
+app = FastAPI(
+    title="ALPR Production Server",
+    description=(
+        "Multi-camera Automatic Licence Plate Recognition system for car wash monitoring.\n\n"
+        "**Camera types:**\n"
+        "- `primary` — full pipeline: plate + colour + brand detection\n"
+        "- `secondary` — plate-only pipeline\n\n"
+        "**Docs:** `/docs` (Swagger) · `/redoc` (ReDoc)"
+    ),
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 _BASE        = os.path.dirname(os.path.abspath(__file__))
@@ -97,7 +109,7 @@ def _start_camera(config: dict) -> CameraPipeline:
     return cam
 
 
-@app.post("/cameras", summary="Register and start a new camera pipeline")
+@app.post("/cameras", summary="Register and start a new camera pipeline", tags=["Cameras"])
 async def add_camera(config: dict[str, Any]):
     """
     Register a new camera and immediately start processing.
@@ -115,7 +127,7 @@ async def add_camera(config: dict[str, Any]):
     return {"ok": True, "name": name, "type": config.get("type", "primary")}
 
 
-@app.delete("/cameras/{name}", summary="Stop and remove a camera pipeline")
+@app.delete("/cameras/{name}", summary="Stop and remove a camera pipeline", tags=["Cameras"])
 async def remove_camera(name: str):
     if name not in _cameras:
         raise HTTPException(404, f"Camera '{name}' not found")
@@ -124,7 +136,21 @@ async def remove_camera(name: str):
     return {"ok": True, "name": name}
 
 
-@app.get("/cameras", summary="List all registered cameras")
+@app.post("/cameras/reload", summary="Reload cameras.json and start any cameras not already running", tags=["Cameras"])
+async def reload_cameras():
+    if not os.path.exists(CAMERAS_JSON):
+        raise HTTPException(404, "cameras.json not found")
+    with open(CAMERAS_JSON) as f:
+        configs = json.load(f)
+    started = []
+    for cfg in configs:
+        if cfg["name"] not in _cameras:
+            _start_camera(cfg)
+            started.append(cfg["name"])
+    return {"ok": True, "started": started, "already_running": [n for n in _cameras if n not in started]}
+
+
+@app.get("/cameras", summary="List all registered cameras", tags=["Cameras"])
 async def list_cameras():
     return [
         {
@@ -145,7 +171,7 @@ async def list_cameras():
 
 # ── Status / live data ─────────────────────────────────────────────────────────
 
-@app.get("/status/{name}", summary="Live detection rows for one camera")
+@app.get("/status/{name}", summary="Live detection rows for one camera", tags=["Status"])
 async def camera_status(name: str):
     if name not in _cameras:
         raise HTTPException(404, f"Camera '{name}' not found")
@@ -159,7 +185,7 @@ async def camera_status(name: str):
     }
 
 
-@app.get("/status", summary="Combined live status for all cameras")
+@app.get("/status", summary="Combined live status for all cameras", tags=["Status"])
 async def all_status():
     return {
         name: {
@@ -174,7 +200,7 @@ async def all_status():
 
 # ── MJPEG streaming ────────────────────────────────────────────────────────────
 
-@app.get("/stream/{name}", summary="MJPEG live stream for one camera")
+@app.get("/stream/{name}", summary="MJPEG live stream for one camera", tags=["Status"])
 async def stream(name: str):
     """
     Returns a multipart/x-mixed-replace MJPEG stream.
@@ -206,7 +232,7 @@ async def stream(name: str):
 
 # ── Database queries ───────────────────────────────────────────────────────────
 
-@app.get("/detections", summary="Recent detections from the database")
+@app.get("/detections", summary="Recent detections from the database", tags=["Detections"])
 async def get_detections(camera: str | None = None, limit: int = 100):
     """Fetch recent finalized detections. Optionally filter by camera name."""
     try:
@@ -220,7 +246,7 @@ async def get_detections(camera: str | None = None, limit: int = 100):
         raise HTTPException(500, str(e))
 
 
-@app.get("/stats", summary="Per-camera detection statistics")
+@app.get("/stats", summary="Per-camera detection statistics", tags=["Detections"])
 async def get_stats():
     """Aggregate stats per camera: total detections and unique plates."""
     try:
@@ -231,7 +257,7 @@ async def get_stats():
 
 # ── Health check ───────────────────────────────────────────────────────────────
 
-@app.get("/health")
+@app.get("/health", tags=["Health"])
 async def health():
     return {"status": "ok", "cameras": len(_cameras)}
 
@@ -254,4 +280,10 @@ async def index():
 @app.get("/data", response_class=HTMLResponse)
 async def data_view():
     with open(os.path.join(_BASE, "static", "data.html")) as f:
+        return f.read()
+
+
+@app.get("/track", response_class=HTMLResponse)
+async def track_view():
+    with open(os.path.join(_BASE, "static", "track.html")) as f:
         return f.read()

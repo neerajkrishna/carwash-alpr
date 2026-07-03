@@ -1,0 +1,38 @@
+services:
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: alpr_user
+      POSTGRES_DB: alpr
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U alpr_user -d alpr"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  alpr:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://alpr_user@postgres:5432/alpr
+    volumes:
+      # Edit cameras.json source paths to use /videos/<filename>.mkv
+      - ./cameras.json:/app/cameras.json
+      # Mount the directory containing your video files
+      - /Users/neerajkrishna/Downloads:/videos
+      # Persist downloaded ONNX / HuggingFace model weights across restarts
+      - model-cache:/root/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  model-cache:
