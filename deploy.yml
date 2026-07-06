@@ -1,0 +1,61 @@
+service: alpr
+image: quantyf/alpr
+
+registry:
+  server: 248189925495.dkr.ecr.ap-southeast-1.amazonaws.com
+  username: AWS
+  password: <%= %x(aws ecr get-login-password --region ap-southeast-1) %>
+
+servers:
+  web:
+    hosts:
+      - 142.93.108.139
+
+proxy:
+  ssl: false
+  app_port: 8000
+  forward_headers: true
+  response_timeout: 300
+  healthcheck:
+    path: /health
+    interval: 5
+    timeout: 60
+
+# Build on the server to avoid slow amd64 cross-compilation on Apple Silicon.
+# Requires SSH access to 142.93.108.139 (devbox-flutr-fra1) with the correct key before running.
+ssh:
+  keys:
+    - ~/.ssh/id_ed25519
+
+builder:
+  arch: amd64
+  remote: ssh://root@142.93.108.139
+  context: /Users/neerajkrishna/Desktop/pytest/alpr-production
+  dockerfile: /Users/neerajkrishna/Desktop/pytest/alpr-production/Dockerfile
+  local: false
+
+env:
+  clear:
+    PORT: 8000
+    DATABASE_URL: postgresql://alpr_user@alpr-db/alpr
+
+volumes:
+  # Upload video files to /mnt/alpr-videos on the server before first deploy.
+  # scp <file>.mkv ubuntu@142.93.108.139:/mnt/alpr-videos/
+  - /mnt/alpr-videos:/videos
+  # Persists downloaded ONNX / HuggingFace model weights across container restarts.
+  - alpr-model-cache:/root/.cache
+
+accessories:
+  db:
+    image: postgres:15-alpine
+    host: 142.93.108.139
+    # Use port 5432 (bound to localhost only to avoid conflict with QuantyfAPI's port 5430)
+    port: "127.0.0.1:5432:5432"
+    env:
+      clear:
+        POSTGRES_USER: alpr_user
+        POSTGRES_DB: alpr
+        POSTGRES_HOST_AUTH_METHOD: trust
+    directories:
+      - alpr-postgres-data:/var/lib/postgresql/data
