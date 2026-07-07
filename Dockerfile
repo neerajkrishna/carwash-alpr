@@ -20,7 +20,7 @@ COPY static/ static/
 
 # Export YOLO11n to ONNX for 2-3x faster CPU inference via ONNXRuntime.
 # Done at build time so the .onnx file is baked into the image layer.
-RUN python -c "from ultralytics import YOLO; YOLO('models/yolo11n.pt').export(format='onnx', imgsz=480, dynamic=False, simplify=False)"
+RUN python -c "from ultralytics import YOLO; YOLO('models/yolo11n.pt').export(format='onnx', imgsz=480, dynamic=True, simplify=False)"
 
 EXPOSE 8000
 
