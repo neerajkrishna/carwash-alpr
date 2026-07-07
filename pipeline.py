@@ -123,7 +123,7 @@ class CameraPipeline:
         self.entry_axis  = config.get("entry_axis", "horizontal")  # "horizontal" or "vertical"
 
         # Minimum number of consistent plate reads before writing to DB
-        self.min_plate_count = int(config.get("min_plate_count", 1))
+        self.min_plate_count = int(config.get("min_plate_count", 2))
 
         # Cap PyTorch intra-op threads so 3 cameras don't thrash all 8 cores
         torch.set_num_threads(1)

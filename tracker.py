@@ -194,8 +194,9 @@ class TrackStore:
             entry["plate_count"] = entry.get("plate_count", 1) + 1
         elif plate == existing:
             entry["plate_count"] = entry.get("plate_count", 1) + 1
-        elif conf > entry.get("plate_conf", 0.0):
-            # Unrelated string with higher confidence — reset, new candidate
+        elif entry.get("plate_count", 1) < 2 and conf > entry.get("plate_conf", 0.0):
+            # Replace only if not yet confirmed by a second read — prevents a single
+            # high-confidence misread from overwriting an already-confirmed plate
             entry["plate"] = plate; entry["plate_conf"] = conf
             entry["plate_count"] = 1
 
