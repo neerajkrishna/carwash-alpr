@@ -61,7 +61,7 @@ def get_tracks(frame_bgr: np.ndarray, upper_line: float = 0.0, entry_line: float
         tracker=BYTETRACK_CFG,
         classes=VEHICLE_CLASS_IDS,
         conf=MIN_CONFIDENCE,
-        imgsz=480,
+        imgsz=416,
         verbose=False,
     )
 

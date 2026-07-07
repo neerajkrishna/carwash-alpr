@@ -23,7 +23,10 @@ from transformers import CLIPProcessor, CLIPModel
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 _BASE        = os.path.dirname(os.path.abspath(__file__))
-YOLO_PATH    = os.path.join(_BASE, "models", "yolo11n.pt")
+_YOLO_ONNX   = os.path.join(_BASE, "models", "yolo11n.onnx")
+_YOLO_PT     = os.path.join(_BASE, "models", "yolo11n.pt")
+# Prefer ONNX (2-3x faster on CPU via ONNXRuntime); fall back to .pt if not built yet
+YOLO_PATH    = _YOLO_ONNX if os.path.exists(_YOLO_ONNX) else _YOLO_PT
 COLOR_PATH   = os.path.join(_BASE, "models", "color_classifier.pth")
 CLASSES_PATH = os.path.join(_BASE, "models", "color_classes.json")
 

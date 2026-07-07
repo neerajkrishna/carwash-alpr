@@ -43,10 +43,12 @@ logger = logging.getLogger("pipeline")
 # ── Tunable constants ──────────────────────────────────────────────────────────
 CLASSIFY_EVERY_N   = 5    # Run colour/brand every N frames
 PLATE_EVERY_N      = 2    # Run plate reader every N frames
-DETECT_EVERY_N     = 2    # Run YOLO vehicle detection every N frames (~50% CPU reduction)
+DETECT_EVERY_N     = 3    # Run YOLO vehicle detection every N frames (~67% CPU reduction)
 MAX_VIDEO_WIDTH    = 1280  # Downscale frames wider than this (saves CPU)
 JPEG_QUALITY       = 70    # MJPEG stream quality
 RECONNECT_DELAY_S  = 3.0   # Seconds to wait before reconnecting a dropped stream
+MAX_PLATE_READS    = 5     # Stop OCR once this many consistent reads per track
+MIN_CROP_AREA      = 4000  # Skip OCR on crops smaller than this (pixels²) — plate unreadable
 
 
 class _LatestFrameBuffer:
@@ -257,18 +259,21 @@ class CameraPipeline:
 
                             # ── Plate detection on vehicle crop ─────────────────
                             if frame_idx % PLATE_EVERY_N == 0:
-                                x1, y1, x2, y2 = t["bbox"]
-                                fh, fw = frame_rgb.shape[:2]
-                                pad = 20
-                                cx1 = max(0, x1 - pad)
-                                cy1 = max(0, y1 - pad)
-                                cx2 = min(fw, x2 + pad)
-                                cy2 = min(fh, y2 + pad)
-                                crop_rgb = frame_rgb[cy1:cy2, cx1:cx2]
-                                plates = read_plates(crop_rgb)
-                                if plates:
-                                    best = max(plates, key=lambda p: p["confidence"])
-                                    track_store.update_plate(tid, best["plate"], best["confidence"])
+                                cur = track_store.get(tid)
+                                if cur.get("plate_count", 0) < MAX_PLATE_READS:
+                                    x1, y1, x2, y2 = t["bbox"]
+                                    fh, fw = frame_rgb.shape[:2]
+                                    pad = 20
+                                    cx1 = max(0, x1 - pad)
+                                    cy1 = max(0, y1 - pad)
+                                    cx2 = min(fw, x2 + pad)
+                                    cy2 = min(fh, y2 + pad)
+                                    if (cx2 - cx1) * (cy2 - cy1) >= MIN_CROP_AREA:
+                                        crop_rgb = frame_rgb[cy1:cy2, cx1:cx2]
+                                        plates = read_plates(crop_rgb)
+                                        if plates:
+                                            best = max(plates, key=lambda p: p["confidence"])
+                                            track_store.update_plate(tid, best["plate"], best["confidence"])
 
                             # ── Update live log row ─────────────────────────────
                             snap = track_store.snapshot(tid)
