@@ -30,6 +30,7 @@ import time
 import logging
 import threading
 import numpy as np
+import torch
 from datetime import datetime
 
 from ultralytics import YOLO
@@ -42,9 +43,48 @@ logger = logging.getLogger("pipeline")
 # ── Tunable constants ──────────────────────────────────────────────────────────
 CLASSIFY_EVERY_N   = 5    # Run colour/brand every N frames
 PLATE_EVERY_N      = 2    # Run plate reader every N frames
+DETECT_EVERY_N     = 2    # Run YOLO vehicle detection every N frames (~50% CPU reduction)
 MAX_VIDEO_WIDTH    = 1280  # Downscale frames wider than this (saves CPU)
 JPEG_QUALITY       = 70    # MJPEG stream quality
 RECONNECT_DELAY_S  = 3.0   # Seconds to wait before reconnecting a dropped stream
+
+
+class _LatestFrameBuffer:
+    """
+    Drains a VideoCapture in a background thread, keeping only the newest frame.
+    The processing loop always reads the latest frame — any backlog is silently
+    discarded. This prevents the pipeline from falling 30–40s behind on live
+    RTSP streams where ingest is faster than inference.
+    """
+
+    def __init__(self, cap: cv2.VideoCapture):
+        self._cap   = cap
+        self._ret   = False
+        self._frame = None
+        self._lock  = threading.Lock()
+        self._ready = threading.Event()
+        self._stop  = threading.Event()
+        threading.Thread(target=self._reader, daemon=True, name="frame-drain").start()
+
+    def _reader(self):
+        while not self._stop.is_set():
+            ret, frame = self._cap.read()
+            with self._lock:
+                self._ret, self._frame = ret, frame
+            self._ready.set()
+            if not ret:
+                break
+
+    def read(self) -> tuple:
+        """Block until a new frame arrives; return the most recent (ret, frame)."""
+        self._ready.wait(timeout=5.0)
+        self._ready.clear()
+        with self._lock:
+            return self._ret, self._frame
+
+    def release(self):
+        self._stop.set()
+        self._cap.release()
 
 
 class CameraPipeline:
@@ -82,6 +122,9 @@ class CameraPipeline:
 
         # Minimum number of consistent plate reads before writing to DB
         self.min_plate_count = int(config.get("min_plate_count", 1))
+
+        # Cap PyTorch intra-op threads so 3 cameras don't thrash all 8 cores
+        torch.set_num_threads(1)
 
         # Per-camera YOLO detector (own instance so ByteTrack state is not shared)
         self._detector   = YOLO(YOLO_PATH)
@@ -126,6 +169,10 @@ class CameraPipeline:
 
         while self.running:
             cap = cv2.VideoCapture(self.source)
+            if not is_file:
+                # Prevent OpenCV from buffering more than 1 frame internally
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
             if not cap.isOpened():
                 logger.warning(f"[{self.name}] Could not open source: {self.source}. Retrying in {RECONNECT_DELAY_S}s...")
                 time.sleep(RECONNECT_DELAY_S)
@@ -140,13 +187,17 @@ class CameraPipeline:
 
             track_store = TrackStore()
             active_tids: set[int] = set()   # track IDs seen in previous frame
+            last_tracks: list[dict] = []    # YOLO result reused on stride-skipped frames
 
             logger.info(f"[{self.name}] Stream opened. fps={fps:.1f} scale={scale:.2f}")
 
+            # Live streams: drain into a size-1 slot so we always process the newest frame
+            buf = _LatestFrameBuffer(cap) if not is_file else None
+
             try:
                 while self.running:
-                    ret, frame = cap.read()
-                    if not ret:
+                    ret, frame = buf.read() if buf is not None else cap.read()
+                    if not ret or frame is None:
                         if is_file:
                             logger.info(f"[{self.name}] Video file ended.")
                             self.done = True
@@ -165,8 +216,11 @@ class CameraPipeline:
 
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-                    # ── Vehicle tracking ────────────────────────────────────────
-                    tracks = get_tracks(frame, self.upper_line, self.entry_line, self._detector, self.entry_axis, self.lower_line)
+                    # ── Vehicle tracking (strided: full YOLO every DETECT_EVERY_N frames) ──
+                    if frame_idx % DETECT_EVERY_N == 0:
+                        last_tracks = get_tracks(frame, self.upper_line, self.entry_line,
+                                                 self._detector, self.entry_axis, self.lower_line)
+                    tracks = last_tracks
                     current_tids = {t["track_id"] for t in tracks}
 
                     # ── Finalize tracks that disappeared (left frame) ────────────
@@ -225,7 +279,10 @@ class CameraPipeline:
                         self.progress = min(round(frame_idx / total * 100), 99)
 
             finally:
-                cap.release()
+                if buf is not None:
+                    buf.release()  # also releases cap
+                else:
+                    cap.release()
 
             if is_file:
                 self.progress = 100
